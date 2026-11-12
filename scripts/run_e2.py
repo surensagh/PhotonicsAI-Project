@@ -152,8 +152,10 @@ def main():
     ap.add_argument("--no-report", action="store_true")
     args = ap.parse_args()
     cfg = load_config(args.config)
+    global EXP
+    EXP = cfg.get("experiment", "E2")   # "E2diag" for the exploratory diagnostic (separate records)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("device:", device)
+    print("experiment:", EXP, "| device:", device)
 
     feats = load_sciq_features(cfg["model_tag"], cfg["layer"], cfg["pooling"])
     Xtr_raw, ytr, _ = feats["train"]

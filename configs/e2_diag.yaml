@@ -1,0 +1,36 @@
+# E2diag: EXPLORATORY diagnostic after E2 (logged in deviations.md, entry 2026-11-12).
+# Same design as configs/e2.yaml except the tuning grids, which are widened because E2 selected
+# grid-edge values (F: smallest beta; C, E: largest lambda). Not used for any confirmatory claim.
+experiment: E2diag
+exploratory: true
+note: "Widened grids: lambda 1e-4..1e4 (9 values) for every linear map; 6 knob values for each knob map, extended toward the near-linear end (F: beta down to pi/32; D: s down to 1/16; H: sigma up to 16 sqrt(d)). G (MLP) is not re-run. Theory check: as beta -> 0, F becomes a random linear map of tanh(h), so its accuracy should approach the linear maps (B, D at small s)."
+model_tag: pythia-160m
+layer: L12
+pooling: mean
+maps: [A, B, C, D, E, F-scatter, F-fourier, H]
+dims: [768, 3072]
+regimes:
+  - {name: N100, N: 100}
+  - {name: full}
+map_seeds: [0, 1, 2]
+subsample_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+lambdas: [1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e+1, 1.0e+2, 1.0e+3, 1.0e+4]
+max_iter: 500
+knobs:                            # 6 values each (equal budget across knob maps)
+  D: [0.0625, 0.125, 0.25, 0.5, 1.0, 2.0]
+  F-scatter: [0.09817477042468103, 0.19634954084936207, 0.39269908169872414, 0.7853981633974483, 1.5707963267948966, 3.141592653589793]
+  F-fourier: [0.09817477042468103, 0.19634954084936207, 0.39269908169872414, 0.7853981633974483, 1.5707963267948966, 3.141592653589793]
+  H: [0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
+untuned:
+  F-scatter: 3.141592653589793
+  F-fourier: 3.141592653589793
+mlp:                              # unused (G not in maps); kept so the runner's schema is unchanged
+  hidden: 256
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  batch_size: 64
+  patience: 10
+  max_epochs: 200
+bootstrap:
+  B: 10000
+  seed: 0

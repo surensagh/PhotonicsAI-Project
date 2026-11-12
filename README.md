@@ -18,6 +18,7 @@ Current stage: **E0 (gate G1), E1 (Core baselines) and E2 (optical vs digital op
 | `03_e0_validation` | CPU or GPU | all unit tests + E0 report → gate G1 |
 | `04_e1_baselines` | T4 GPU | zero-shot, linear probe, MLP head → Table 1 |
 | `05_e2_operators` | T4 GPU | 9 feature maps × 2 D × 2 regimes × 3 seeds → Table 2, Figure 2, gate G2 |
+| `06_e2_diagnostic` | T4 GPU | exploratory widened-grid E2 (see `deviations.md`) |
 
 Notebooks only call the scripts in `scripts/`, so anything can also be run from a terminal with
 `OPTLM_WORKSPACE=/path/to/workspace python scripts/<name>.py --config configs/<name>.yaml`.
@@ -26,6 +27,7 @@ Notebooks only call the scripts in `scripts/`, so anything can also be run from 
 
 ```
 research_question_v1.md   pre-registration (frozen)
+deviations.md             dated log of every departure from the protocol
 configs/                  one YAML per stage (splits, extract, e0, e1)
 optlm/                    pipeline: data_sciq, extract, features, heads, zero_shot, utils
 optics/                   optical feature maps (F-scatter, F-fourier, analytic kernel)

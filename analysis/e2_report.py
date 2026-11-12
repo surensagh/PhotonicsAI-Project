@@ -43,9 +43,9 @@ INTERPRETATION = {
 }
 
 
-def load_records():
+def load_records(exp="E2"):
     recs = {}
-    for p in sorted(runs_dir("E2").glob("*.json")):
+    for p in sorted(runs_dir(exp).glob("*.json")):
         r = read_json(p)
         m = r["metrics"]
         recs[(m["map"], m["D"], m["regime"])] = r
@@ -81,7 +81,7 @@ def interpret(dvs) -> int:
     return 2
 
 
-def make_figure(panels, path):
+def make_figure(panels, path, exp="E2"):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -114,7 +114,7 @@ def make_figure(panels, path):
             ax.spines[s].set_visible(False)
         ax.spines["bottom"].set_color(grid_c)
         ax.tick_params(colors=ink2, length=0)
-    fig.suptitle("Figure 2 · E2: optical vs digital feature maps (SciQ dev, Pythia-160M L12 mean). "
+    fig.suptitle(f"Figure 2 · {exp}: optical vs digital feature maps (SciQ dev, Pythia-160M L12 mean). "
                  "Blue = optical; dashed = identity A", color=ink, fontsize=11, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(path, dpi=200, facecolor=surface)
@@ -122,10 +122,13 @@ def make_figure(panels, path):
 
 
 def build_report(cfg: dict) -> dict:
-    recs = load_records()
+    exp = cfg.get("experiment", "E2")
+    tag = exp.lower()
+    recs = load_records(exp)
     d = min(cfg["dims"])
     B, bseed = cfg["bootstrap"]["B"], cfg["bootstrap"]["seed"]
-    panels, out = {}, {"panels": {}, "B": B}
+    panels, out = {}, {"panels": {}, "B": B, "experiment": exp, "exploratory": bool(cfg.get("exploratory")),
+                       "note": cfg.get("note", "")}
     for D in cfg["dims"]:
         for reg in cfg["regimes"]:
             rows = panel_rows(recs, D, reg["name"], d)
@@ -138,7 +141,8 @@ def build_report(cfg: dict) -> dict:
             for m, r in rows.items():
                 s = bs.mean_ci(C[m])
                 s.update({"selected": r["metrics"]["selected"], "params": r["metrics"]["trainable_params"],
-                          "knob_name": r["metrics"]["knob_name"],
+                          "knob_name": r["metrics"]["knob_name"], "knob_values": r["metrics"]["knob_values"],
+                          "lambdas": r["metrics"]["lambdas"], "grid": r["metrics"]["grid_mean_dev_acc"],
                           "seed_sd": float(np.array(r["metrics"]["per_run_dev_acc"]).mean(1).std(ddof=1))
                           if len(r["metrics"]["per_run_dev_acc"]) > 1 else 0.0})
                 stats[m] = s
@@ -173,11 +177,11 @@ def build_report(cfg: dict) -> dict:
                 if c and c["ci_excludes_0"] and c["diff"] > 0:
                     g2_hits.append(f"{f} at {P['title']}")
     out["g2"] = {"passed": bool(g2_hits), "hits": g2_hits}
-    write_json(reports_dir() / "e2_results.json", out)
+    write_json(reports_dir() / f"{tag}_results.json", out)
     if panels:
-        make_figure(panels, reports_dir() / "e2_fig2.png")
-    write_markdown(out, reports_dir() / "e2_table2.md")
-    print("E2 report ->", reports_dir() / "e2_table2.md")
+        make_figure(panels, reports_dir() / f"{tag}_fig2.png", exp)
+    write_markdown(out, reports_dir() / f"{tag}_table2.md", tag)
+    print(f"{exp} report ->", reports_dir() / f"{tag}_table2.md")
     print("Gate G2:", "PASSED" if out["g2"]["passed"] else "NOT PASSED", out["g2"]["hits"])
     return out
 
@@ -188,7 +192,8 @@ def pct(x):
 
 def fmt_knob(name, v):
     if name == "beta":
-        for frac, s in ((0.25, "π/4"), (0.5, "π/2"), (1.0, "π"), (2.0, "2π")):
+        for frac, s in ((1 / 64, "π/64"), (1 / 32, "π/32"), (1 / 16, "π/16"), (0.125, "π/8"), (0.25, "π/4"),
+                        (0.5, "π/2"), (1.0, "π"), (2.0, "2π")):
             if abs(v - frac * np.pi) < 1e-9:
                 return f"β={s}"
     label = {"s": "s", "sigma_over_sqrt_d": "σ/√d", "dropout": "dropout"}.get(name, name)
@@ -206,8 +211,13 @@ def fmt_diff(c):
     return f"{100 * c['diff']:+.1f} [{100 * c['ci_low']:+.1f}, {100 * c['ci_high']:+.1f}]{star}"
 
 
-def write_markdown(out, path):
-    L = ["# Table 2 · E2: optical vs digital feature maps", "",
+def write_markdown(out, path, tag="e2"):
+    L = [f"# Table 2 · {out['experiment']}: optical vs digital feature maps", ""]
+    if out["exploratory"]:
+        L += ["> **EXPLORATORY diagnostic (logged deviation, see deviations.md).** Not part of the pre-registered",
+              "> analysis; the gate line below is informational only and does not replace gate G2.", "",
+              out["note"], ""]
+    L += [
          "SciQ dev (1,000 questions), Pythia-160M-deduped, L12, mean pooling, linear scoring head.",
          "Mean dev accuracy over map seeds (and the 10 paired subsamples at N = 100) with 95% paired-bootstrap CIs.",
          "Hyperparameters selected on dev (protocol 3.6): these are post-selection development numbers.",
@@ -224,10 +234,14 @@ def write_markdown(out, path):
             r = P["rows"][m]
             sel = r["selected"]
             parts = []
+            kv = [k for k in r["knob_values"] if k is not None]
+            lams = [x for x in r["lambdas"] if x is not None]
             if sel["knob"] is not None:
-                parts.append(fmt_knob(r["knob_name"], sel["knob"]))
+                edge = " (edge)" if len(kv) > 1 and sel["knob"] in (min(kv), max(kv)) else ""
+                parts.append(fmt_knob(r["knob_name"], sel["knob"]) + edge)
             if sel["lambda"] is not None:
-                parts.append(f"λ={sel['lambda']:g}")
+                edge = " (edge)" if sel["lambda"] in (min(lams), max(lams)) else ""
+                parts.append(f"λ={sel['lambda']:g}{edge}")
             cfg_s = ", ".join(parts)
             L.append(f"| {LABELS[m]} | {r['params']:,} | {cfg_s or '—'} | {pct(r['mean'])} | "
                      f"[{pct(r['ci_low'])}, {pct(r['ci_high'])}] | {100 * r['seed_sd']:.2f} |")
@@ -242,7 +256,20 @@ def write_markdown(out, path):
         if row is not None:
             obs, concl, nxt = INTERPRETATION[row]
             L += ["", f"**Interpretation matrix (best tuned F = {P['best_F']}):** observed *{obs}* → {concl}. Next: {nxt}.", ""]
-    L += ["", "![Figure 2](e2_fig2.png)", ""]
+        # Knob profile: best dev accuracy over lambda at each knob value (shows where the optimum sits)
+        prof = [m for m in ROW_ORDER if m in P["rows"] and len([k for k in P["rows"][m]["knob_values"] if k is not None]) > 1]
+        if prof:
+            L += ["", "**Knob profile** (dev acc %, best λ at each knob value; selected value in bold):", ""]
+            for m in prof:
+                r = P["rows"][m]
+                g = np.array(r["grid"], dtype=float)
+                cells = []
+                for k, v in enumerate(r["knob_values"]):
+                    s_ = f"{fmt_knob(r['knob_name'], v)}: {100 * g[k].max():.1f}"
+                    cells.append(f"**{s_}**" if v == r["selected"]["knob"] else s_)
+                L.append(f"- {LABELS[m]}: " + " · ".join(cells))
+        L.append("")
+    L += ["", f"![Figure 2]({tag}_fig2.png)", ""]
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 

@@ -242,6 +242,29 @@ The report is regenerated from the run records alone (`python analysis/e2_report
 Raw records: `WORKSPACE/runs/E2/` (selected-config predictions in .json, the full prediction grid in .npz).
 """),
     ]),
+    "06_e2_diagnostic.ipynb": (True, [
+        md("""
+# 06 · E2diag: widened-grid diagnostic (EXPLORATORY)
+
+**Runtime:** T4 GPU. **Time:** about 20–30 minutes. **Resumable.** Logged in `deviations.md` (2026-11-12).
+
+E2 (pre-registered) did not pass gate G2, and several selected values sat on the grid edge
+(F: smallest β = π/4; C, E: largest λ = 100). This run repeats E2 for the linear maps with wider grids:
+λ ∈ {1e-4 … 1e4} for every map, and 6 knob values per knob map (F β down to π/32, tanh s down to 1/16,
+RFF σ up to 16√d). Records go to `runs/E2diag/`, separate from E2; nothing here replaces Table 2.
+
+**Theory check (stated before running):** as β → 0, F becomes a random linear map of tanh(h), so F's
+accuracy should rise toward the linear maps (B, and D at small s). If it does, the optical map works as
+the physics predicts and the phase nonlinearity is what costs accuracy on this task. If it does not,
+F loses information and must be debugged before E3.
+"""),
+        code(SETUP),
+        code(GPU_CHECK),
+        code("!python scripts/run_e2.py --config configs/e2_diag.yaml"),
+        code(r'''print(open(os.path.join(WORKSPACE, "reports", "e2diag_table2.md"), encoding="utf-8").read())'''),
+        code(r'''from IPython.display import Image, display
+display(Image(os.path.join(WORKSPACE, "reports", "e2diag_fig2.png")))'''),
+    ]),
 }
 
 
