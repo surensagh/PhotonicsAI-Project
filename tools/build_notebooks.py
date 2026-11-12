@@ -264,6 +264,11 @@ F loses information and must be debugged before E3.
         code(r'''print(open(os.path.join(WORKSPACE, "reports", "e2diag_table2.md"), encoding="utf-8").read())'''),
         code(r'''from IPython.display import Image, display
 display(Image(os.path.join(WORKSPACE, "reports", "e2diag_fig2.png")))'''),
+        md("""
+### Follow-up: where does F lose accuracy in its linear limit?
+Isolates the tanh squashing and the global-phase (common-mode) loss; see `scripts/diag_linear_limit.py`.
+"""),
+        code("!python scripts/diag_linear_limit.py --config configs/e2_diag.yaml"),
     ]),
 }
 
