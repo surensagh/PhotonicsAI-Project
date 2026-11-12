@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "colab"
 
 SETUP = r'''# ---- Setup (edit the two lines below once) ------------------------------------------
-GITHUB_REPO = "YOUR_GITHUB_USERNAME/YOUR_REPO_NAME"              # repo that holds this code
+GITHUB_REPO = "surensagh/PhotonicsAI-Project"                    # repo that holds this code
 WORKSPACE   = "/content/drive/MyDrive/optical_lm_workspace"      # splits, cache, runs, reports
 # -------------------------------------------------------------------------------------
 import os, subprocess, sys
