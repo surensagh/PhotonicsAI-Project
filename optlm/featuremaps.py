@@ -61,7 +61,8 @@ class FeatureMap:
             self.Ur = torch.from_numpy(m.U.real.astype(np.float32)).to(device)
             self.Ui = torch.from_numpy(m.U.imag.astype(np.float32)).to(device)
         elif name in ("F-fourier", "F2-fourier"):
-            m = FFourier(d, D, seed=[MAP_CODES[name], seed])
+            # 64 x 64 far-field window (4096 camera pixels); larger D needs a finer camera grid (128 x 128)
+            m = FFourier(d, D, seed=[MAP_CODES[name], seed], fft_size=64 if D <= 4096 else 128)
             self.G, self.M, self.offset = m.G, m.M, m.offset
             self.pad_amplitude, self.pad_phase = m.pad_amplitude, m.pad_phase
             self.pixels = torch.from_numpy(m.pixels.astype(np.int64)).to(device)

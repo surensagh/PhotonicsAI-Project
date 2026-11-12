@@ -20,6 +20,8 @@ Current stage: **E0 (gate G1), E1 (Core baselines) and E2 (optical vs digital op
 | `05_e2_operators` | T4 GPU | 9 feature maps × 2 D × 2 regimes × 3 seeds → Table 2, Figure 2, gate G2 |
 | `06_e2_diagnostic` | T4 GPU | exploratory widened-grid E2 + linear-limit decomposition (see `deviations.md`) |
 | `07_e2_v2_encoding` | T4 GPU | E2 under protocol amendment v2 (scaled phase encoding, knob τ) |
+| `08_e3_placement` | T4 GPU | E3-A: layer × pooling × integration → frozen decision D-E3 |
+| `09_e4_dimension` | T4 GPU | E4: accuracy vs D at D-E3 → Figure 3 |
 
 Notebooks only call the scripts in `scripts/`, so anything can also be run from a terminal with
 `OPTLM_WORKSPACE=/path/to/workspace python scripts/<name>.py --config configs/<name>.yaml`.
@@ -63,6 +65,9 @@ Workspace (Google Drive, not in git): `splits/`, `cache/`, `runs/E0|E1/*.json`, 
   parameters, so identical to separate fits; verified in `tests/test_stats_batched.py`).
 - **Statistics:** one shared paired bootstrap (10,000 resamples of subsamples and items) per panel; Holm across
   the F-row comparisons; gate G2 uses the uncorrected 95% CI as the protocol states.
+- **E3/E4 runner:** `scripts/run_e2.py` also runs placement cells (`cells`, or `cells_from` the D-E3 decision),
+  parallel integration ([h; r], both standardized) and E4's pre-registered D = 8d extension rule.
+- **F-fourier above D = 4096** reads a 128 × 128 far-field grid (64 × 64 holds only 4096 camera pixels).
 - Package versions are recorded in every run record instead of being pinned.
 
 ## Local tests

@@ -1,0 +1,34 @@
+# E3-A: placement and integration (protocol E3 Part A, Core), under protocol amendment v2.
+# Optical map = best variant from E2 v2 (F2-fourier: best N = 100 accuracy at both D); digital
+# reference = H (best digital at D = 4d in E2). A = identity at the same layer/pooling, for reference.
+experiment: E3
+report: analysis.e3_report
+optical_map: F2-fourier
+digital_ref: H
+model_tag: pythia-160m
+cells:
+  layers: [L3, L6, L12]            # 25 / 50 / 100% depth of Pythia-160M (L12 = after final LayerNorm)
+  poolings: [mean, last]
+  integrations: [replacement, parallel]
+maps: [A, H, F2-fourier]
+dims_over_d: [4]                   # D = 4d
+regimes:
+  - {name: N100, N: 100}
+  - {name: full}
+map_seeds: [0, 1, 2]
+subsample_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+lambdas: [1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e+1, 1.0e+2]
+max_iter: 500
+knobs:
+  H: [0.5, 1.0, 2.0, 4.0]
+  F2-fourier: [1.0, 4.0, 16.0, 64.0]
+mlp:                               # unused (no G); kept for the runner's schema
+  hidden: 256
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  batch_size: 64
+  patience: 10
+  max_epochs: 200
+bootstrap:
+  B: 10000
+  seed: 0

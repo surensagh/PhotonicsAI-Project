@@ -28,13 +28,20 @@ from optlm.subsamples import get_subsamples  # noqa: E402
 from optlm.utils import load_config, now_iso, run_name, runs_dir, save_run_record  # noqa: E402
 
 EXP, TASK = "E2", "sciq"
+# Current placement cell (E3/E4): {"layer", "pooling", "integration", "tag"}; None = the E2 default cell.
+CELL = None
+
+
+def cell_tag(c):
+    return f"{c['layer']}{c['pooling']}-{'par' if c['integration'] == 'parallel' else 'rep'}"
 
 
 def record_name(cfg, m, D, regime, variant_suffix=""):
     n = regime.get("N", "full")
     seeds = "0" if m == "A" else f"{cfg['map_seeds'][0]}-{cfg['map_seeds'][-1]}"
     ss = f"{cfg['subsample_seeds'][0]}-{cfg['subsample_seeds'][-1]}" if "N" in regime else "NA"
-    return run_name(EXP, f"{m}{variant_suffix}-D{D}", cfg["model_tag"], TASK, n, seeds, ss)
+    cell = f"-{CELL['tag']}" if CELL else ""
+    return run_name(EXP, f"{m}{variant_suffix}{cell}-D{D}", cfg["model_tag"], TASK, n, seeds, ss)
 
 
 def select(pred, ydev, knob_values, lambdas):
@@ -69,6 +76,8 @@ def save(cfg, m, D, regime, knob_name, knob_values, lambdas, pred, ydev, ids, pa
         "per_run_dev_acc": acc[k, l].round(5).tolist(),  # [seed][subsample]
         "map_seeds": seeds, "subsample_seeds": cfg["subsample_seeds"] if "N" in regime else None,
         "trainable_params": params, "seconds": timing,
+        "layer": (CELL or cfg)["layer"], "pooling": (CELL or cfg)["pooling"],
+        "integration": (CELL or {}).get("integration", "replacement"), "cell": CELL["tag"] if CELL else None,
     }
     preds = {"ids": ids, "label": ydev.tolist(), "pred": sel_pred.astype(int).tolist()}
     save_run_record(EXP, name, cfg, metrics, preds, started)
@@ -84,6 +93,7 @@ def run_linear_map(cfg, m, D, data, subs, device):
     knobs = cfg["knobs"].get(m, [None])
     lambdas = cfg["lambdas"]
     seeds = [0] if m == "A" else cfg["map_seeds"]
+    parallel = bool(CELL) and CELL["integration"] == "parallel" and m != "A"
     preds = {r["name"]: np.zeros((len(knobs), len(lambdas), len(seeds), subs[r["name"]].shape[0] if "N" in r else 1, ndev),
                                  dtype=np.int8) for r in cfg["regimes"]}
     started, t0 = now_iso(), time.time()
@@ -93,8 +103,11 @@ def run_linear_map(cfg, m, D, data, subs, device):
             Rtr = fm(Htr, knob)
             Rdev = fm(Hdev, knob)
             mean, sd = standardize_fit(Rtr)
-            Xtr = ((Rtr - mean) / sd).view(ntr, 4, D)
-            Xdev = ((Rdev - mean) / sd).view(ndev, 4, D)
+            Rtr, Rdev = (Rtr - mean) / sd, (Rdev - mean) / sd
+            if parallel:  # parallel integration: the head sees [h; r] (both standardized)
+                Rtr, Rdev = torch.cat([Htr, Rtr], 1), torch.cat([Hdev, Rdev], 1)
+            nf = Rtr.shape[1]
+            Xtr, Xdev = Rtr.view(ntr, 4, nf), Rdev.view(ndev, 4, nf)
             del Rtr, Rdev
             for r in cfg["regimes"]:
                 if "N" in r:
@@ -112,7 +125,7 @@ def run_linear_map(cfg, m, D, data, subs, device):
             if device == "cuda":
                 torch.cuda.empty_cache()
     knob_name = KNOB_NAMES.get(m)
-    params = d if m == "A" else D
+    params = d if m == "A" else (D + d if parallel else D)
     for r in cfg["regimes"]:
         save(cfg, m, D, r, knob_name, knobs, lambdas, preds[r["name"]], ydev, ids, params, started, seeds,
              timing=round(time.time() - t0, 1))
@@ -144,7 +157,65 @@ def run_mlp_map(cfg, D, data, subs):
              timing=round(time.time() - t0, 1))
 
 
+def build_data(cfg, layer, pooling, device):
+    feats = load_sciq_features(cfg["model_tag"], layer, pooling)
+    Xtr_raw, ytr, _ = feats["train"]
+    Xdev_raw, ydev, ids = feats["dev"]
+    std = Standardizer().fit(Xtr_raw)
+    Htr_np, Hdev_np = std.transform(Xtr_raw), std.transform(Xdev_raw)
+    ntr, ndev, d = Htr_np.shape[0], Hdev_np.shape[0], Htr_np.shape[-1]
+    return {
+        "Htr_np": Htr_np, "Hdev_np": Hdev_np, "ytr": ytr, "ydev": ydev, "ids": ids, "ntr": ntr, "ndev": ndev, "d": d,
+        "Htr": torch.from_numpy(Htr_np.reshape(-1, d)).to(device),
+        "Hdev": torch.from_numpy(Hdev_np.reshape(-1, d)).to(device),
+        "ytr_t": torch.from_numpy(ytr).to(device),
+    }
+
+
+def resolve_cells(cfg):
+    """None for E2 (single default cell); else a list of placement cells."""
+    if "cells_from" in cfg:  # the frozen decision D-E3 written by analysis/e3_report.py
+        from optlm.utils import read_json, reports_dir
+        dec = read_json(reports_dir() / cfg["cells_from"])
+        cells = [{k: dec[k] for k in ("layer", "pooling", "integration")}]
+    elif "cells" in cfg:
+        c = cfg["cells"]
+        cells = [{"layer": l, "pooling": p, "integration": i}
+                 for l in c["layers"] for p in c["poolings"] for i in c["integrations"]]
+    else:
+        return None
+    for c in cells:
+        c["tag"] = cell_tag(c)
+    return cells
+
+
+def run_maps(cfg, maps, dims, data, subs, device, force):
+    d = data["d"]
+    where = f" {CELL['tag']}" if CELL else ""
+    for m in maps:
+        # identity A exists only at D = d (and only as replacement): run it once, whatever dims are listed
+        for D in ([d] if m == "A" else dims):
+            if m == "A" and CELL and CELL["integration"] == "parallel":
+                continue
+            first = record_name(cfg, m, D, cfg["regimes"][0])
+            if (runs_dir(EXP) / f"{first}.json").exists() and not force:
+                print(f"[{m} D={D}{where}] records exist, skipping")
+                continue
+            print(f"[{m} D={D}{where}] start", flush=True)
+            if m == "G":
+                run_mlp_map(cfg, D, data, subs)
+            else:
+                run_linear_map(cfg, m, D, data, subs, device)
+
+
+def mean_acc(cfg, m, D, regime):
+    from optlm.utils import read_json
+    p = runs_dir(EXP) / f"{record_name(cfg, m, D, regime)}.json"
+    return read_json(p)["metrics"]["selected"]["mean_dev_acc"] if p.exists() else None
+
+
 def main():
+    global EXP, CELL
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/e2.yaml")
     ap.add_argument("--maps", nargs="*", help="subset of maps (default: all in config)")
@@ -152,43 +223,42 @@ def main():
     ap.add_argument("--no-report", action="store_true")
     args = ap.parse_args()
     cfg = load_config(args.config)
-    global EXP
-    EXP = cfg.get("experiment", "E2")   # "E2diag" for the exploratory diagnostic (separate records)
+    EXP = cfg.get("experiment", "E2")   # E2, E2diag, E2v2, E3, E4: separate record folders
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("experiment:", EXP, "| device:", device)
-
-    feats = load_sciq_features(cfg["model_tag"], cfg["layer"], cfg["pooling"])
-    Xtr_raw, ytr, _ = feats["train"]
-    Xdev_raw, ydev, ids = feats["dev"]
-    std = Standardizer().fit(Xtr_raw)
-    Htr_np, Hdev_np = std.transform(Xtr_raw), std.transform(Xdev_raw)
-    ntr, ndev, d = Htr_np.shape[0], Hdev_np.shape[0], Htr_np.shape[-1]
-    data = {
-        "Htr_np": Htr_np, "Hdev_np": Hdev_np, "ytr": ytr, "ydev": ydev, "ids": ids, "ntr": ntr, "ndev": ndev, "d": d,
-        "Htr": torch.from_numpy(Htr_np.reshape(-1, d)).to(device),
-        "Hdev": torch.from_numpy(Hdev_np.reshape(-1, d)).to(device),
-        "ytr_t": torch.from_numpy(ytr).to(device),
-    }
+    maps = args.maps or cfg["maps"]
     subs = {r["name"]: get_subsamples(r["N"], cfg["subsample_seeds"]) for r in cfg["regimes"] if "N" in r}
-    print(f"train {Htr_np.shape}, dev {Hdev_np.shape}, subsamples: { {k: v.shape for k, v in subs.items()} }")
 
-    for m in (args.maps or cfg["maps"]):
-        for D in cfg["dims"]:
-            if m == "A" and D != d:
-                continue
-            first = record_name(cfg, m, D, cfg["regimes"][0])
-            if (runs_dir(EXP) / f"{first}.json").exists() and not args.force:
-                print(f"[{m} D={D}] records exist, skipping")
-                continue
-            print(f"[{m} D={D}] start", flush=True)
-            if m == "G":
-                run_mlp_map(cfg, D, data, subs)
-            else:
-                run_linear_map(cfg, m, D, data, subs, device)
+    cells = resolve_cells(cfg)
+    for cell in (cells or [None]):
+        CELL = cell
+        layer = cell["layer"] if cell else cfg["layer"]
+        pooling = cell["pooling"] if cell else cfg["pooling"]
+        data = build_data(cfg, layer, pooling, device)
+        d = data["d"]
+        dims = [int(round(f * d)) for f in cfg["dims_over_d"]] if "dims_over_d" in cfg else cfg["dims"]
+        print(f"cell {cell['tag'] if cell else 'default'}: train {data['Htr_np'].shape}, dev {data['Hdev_np'].shape}, "
+              f"D = {dims}", flush=True)
+        run_maps(cfg, maps, dims, data, subs, device, args.force)
+
+        # E4 rule: add D = factor * d only if a listed map still gains > min_gain from 2d to 4d (either regime)
+        ext = cfg.get("extend_dims")
+        if ext:
+            gains = {}
+            for m in ext["maps"]:
+                for r in cfg["regimes"]:
+                    a2, a4 = mean_acc(cfg, m, 2 * d, r), mean_acc(cfg, m, 4 * d, r)
+                    if a2 is not None and a4 is not None:
+                        gains[f"{m} {r['name']}"] = a4 - a2
+            trigger = any(g > ext["min_gain"] for g in gains.values())
+            print("extension check (acc 4d - 2d, pp):", {k: round(100 * v, 2) for k, v in gains.items()},
+                  "->", f"run D = {ext['factor']}d" if trigger else "no extension")
+            if trigger:
+                run_maps(cfg, maps, [ext["factor"] * d], data, subs, device, args.force)
 
     if not args.no_report:
-        from analysis.e2_report import build_report
-        build_report(cfg)
+        import importlib
+        importlib.import_module(cfg.get("report", "analysis.e2_report")).build_report(cfg)
 
 
 if __name__ == "__main__":

@@ -295,6 +295,56 @@ at τ = 64. Whether F2 beats A or the best digital map at N = 100 is what this r
         code(r'''from IPython.display import Image, display
 display(Image(os.path.join(WORKSPACE, "reports", "e2v2_fig2.png")))'''),
     ]),
+    "08_e3_placement.ipynb": (True, [
+        md("""
+# 08 · E3-A: placement and integration → decision D-E3
+
+**Runtime:** T4 GPU. **Time:** about 30–45 minutes. **Resumable.** Protocol v2 encoding.
+
+**Question.** Where in the LM, and in what form, are optical features most useful?
+
+**Design** (protocol E3 Part A, Core). Layer ∈ {L3, L6, L12} (25 / 50 / 100% depth) × pooling ∈ {mean, last token}
+× integration ∈ {replacement r, parallel [h; r]} = 12 cells. Maps: F2-fourier (best optical variant in E2 v2) and
+H (best digital), plus identity A at each layer/pooling. D = 4d, N = 100 (10 paired subsamples) and full data,
+3 map seeds, same tuning budget as E2.
+
+**Decision rule (fixed before running).** D-E3 = the cell with the best N = 100 dev accuracy for F2-fourier;
+ties go to replacement, then mean pooling, then the later layer. Written to `reports/e3_decision.json` and
+frozen for E4 onward.
+"""),
+        code(SETUP),
+        code(GPU_CHECK),
+        code("!python scripts/run_e2.py --config configs/e3.yaml"),
+        code(r'''print(open(os.path.join(WORKSPACE, "reports", "e3_table.md"), encoding="utf-8").read())'''),
+        code(r'''from IPython.display import Image, display
+display(Image(os.path.join(WORKSPACE, "reports", "e3_fig.png")))'''),
+    ]),
+    "09_e4_dimension.ipynb": (True, [
+        md("""
+# 09 · E4: optical dimension (Figure 3)
+
+**Runtime:** T4 GPU. **Time:** about 20–40 minutes. **Resumable.** Needs notebook 08 (decision D-E3).
+
+**Question.** Does a larger optical feature space improve learning, and does it saturate where digital
+random features do?
+
+**Design** (protocol E4, Core). D/d ∈ {0.5, 1, 2, 4} at the frozen placement D-E3. Maps: F2-scatter,
+F2-fourier, H, C, B (A as reference). N = 100 and full data, 3 map seeds. **D = 8d is added automatically
+only if an optical map still gains more than 1 pp from 2d to 4d** (rule fixed in advance). For D > 4096,
+F-fourier reads a 128 × 128 far-field grid instead of 64 × 64.
+
+**Interpretation (protocol).** If the optical map saturates at a lower D than H, it is more feature-efficient
+(fewer camera pixels needed); if both saturate together, they have equivalent capacity.
+"""),
+        code(SETUP),
+        code(GPU_CHECK),
+        code(r'''import json
+print(json.load(open(os.path.join(WORKSPACE, "reports", "e3_decision.json"))))'''),
+        code("!python scripts/run_e2.py --config configs/e4.yaml"),
+        code(r'''print(open(os.path.join(WORKSPACE, "reports", "e4_table.md"), encoding="utf-8").read())'''),
+        code(r'''from IPython.display import Image, display
+display(Image(os.path.join(WORKSPACE, "reports", "e4_fig3.png")))'''),
+    ]),
 }
 
 
