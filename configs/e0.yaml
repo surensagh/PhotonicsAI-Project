@@ -1,0 +1,12 @@
+# E0: pipeline validation (protocol section 4, E0).
+model_tag: pythia-160m
+layer: L12
+pooling: mean
+sanity:
+  lambda: 1.0e-2             # fixed ridge strength for sanity runs (no tuning, so no selection bias)
+  n_loss_items: 1000         # head trained on this many train items for the loss-monotonicity check
+  chance: 0.25
+  tolerance_pp: 3.0          # permuted labels / noise inputs must land in 25% +- 3 pp
+  beta_zero: 1.0e-8          # beta -> 0 test value
+  beta_zero_D: 3072          # D = 4d
+  seed: 0

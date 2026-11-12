@@ -1,0 +1,24 @@
+# E1: baselines (protocol section 4, E1). SciQ, Pythia-160M, dev split, full training data.
+model_tag: pythia-160m
+hf_id: EleutherAI/pythia-160m-deduped
+revision: step143000
+layer: L12
+pooling: mean
+zero_shot:
+  batch_size: 64
+  primary_normalization: per_token   # also reported: per_char, sum
+linear:
+  lambdas: [1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e+1, 1.0e+2]   # keep the explicit '+': PyYAML reads 1.0e1 as a string
+  max_iter: 500
+mlp:
+  hidden: 256
+  out_dim: 768                # D = d
+  dropouts: [0.0, 0.1, 0.3, 0.5]
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  batch_size: 64
+  patience: 10
+  max_epochs: 200
+  seeds: [0, 1, 2]
+gate:
+  min_linear_probe_acc: 0.35

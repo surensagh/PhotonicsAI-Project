@@ -1,0 +1,9 @@
+# Colab already ships all of these; pip will not upgrade what is installed.
+# Exact versions are recorded in every run record instead of being pinned here.
+numpy
+scipy
+pyyaml
+pytest
+torch
+transformers
+datasets

@@ -1,0 +1,8 @@
+# Large / regenerable artifacts live in the workspace (Google Drive on Colab)
+workspace/
+cache/
+*.npy
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/

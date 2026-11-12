@@ -1,0 +1,8 @@
+# Locked SciQ splits (protocol 3.2) and E0 data checks.
+task: sciq
+hf_dataset: allenai/sciq
+seed: 0                      # option-shuffle seed (pre-registered)
+near_duplicate:
+  field: question            # compare normalized question text only
+  jaccard_threshold: 0.9     # train items above this vs dev/test are removed
+chi2_alpha: 0.05
