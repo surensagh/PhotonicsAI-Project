@@ -17,3 +17,14 @@ never replace a pre-registered analysis; both are reported.
   the linear maps' accuracy. If it does not, the map loses information (a bug or a real property).
 - **Status:** exploratory. The pre-registered E2 result (Table 2, G2 not passed) stands as reported.
   Any later decision that uses these grids (e.g. for E3–E5) needs its own dated entry here.
+
+## 2026-11-12 · E2diag follow-up: linear-limit decomposition (exploratory)
+
+- **What:** `scripts/diag_linear_limit.py` trains the same linear head (E2diag λ grid, dev selection) on
+  h, h minus its common-mode direction, tanh(h), tanh(h) minus common mode, F's analytic first-order
+  term, and F-scatter at β = π/256.
+- **Why:** In E2diag F did not approach the linear maps as β → 0 (full data, D = d: 44.8% vs ~51.5%),
+  failing the theory check written before the run. To first order in β, F is a linear map of
+  tanh(h) whose rows sum to zero (global-phase invariance), so the loss can come from the tanh
+  squashing, from the lost common-mode direction, or from a bug. Each is isolated here.
+- **Status:** exploratory; informs debugging and the E3/E4 design, not a confirmatory claim.
