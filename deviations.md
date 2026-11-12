@@ -28,3 +28,14 @@ never replace a pre-registered analysis; both are reported.
   tanh(h) whose rows sum to zero (global-phase invariance), so the loss can come from the tanh
   squashing, from the lost common-mode direction, or from a bug. Each is isolated here.
 - **Status:** exploratory; informs debugging and the E3/E4 design, not a confirmatory claim.
+
+## 2026-11-13 · Protocol amendment v2: F's phase encoding (confirmatory going forward)
+
+- **What:** `research_question_v2.md`. F's encoding becomes phi = 2 pi (tanh(h / tau) + 1) / 2 with knob
+  tau in {1, 4, 16, 64} (replacing beta); same optics, seeds and 28-configuration budget. E2 is re-run
+  under v2 as `E2v2` with the pre-registered E2 design; non-F maps reuse their E2 records (identical
+  seeds, grids and data, so re-running them would reproduce the same numbers).
+- **Why:** the 2026-11-12 diagnostic located F's loss in the tanh squashing of the encoding, not in the
+  optics (details in the v2 amendment).
+- **Status:** amendment made before the Dec 26 architecture freeze and before any locked-test use.
+  The v1 E2 result stays reported. Later experiments (E3 onward) use the v2 encoding.
