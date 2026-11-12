@@ -1,0 +1,32 @@
+# E2: optical vs digital operators (protocol section 4, E2). Tuned on dev (protocol 3.6).
+model_tag: pythia-160m
+layer: L12
+pooling: mean
+maps: [A, B, C, D, E, F-scatter, F-fourier, G, H]
+dims: [768, 3072]                 # D = d and D = 4d (identity A only at D = d)
+regimes:
+  - {name: N100, N: 100}
+  - {name: full}
+map_seeds: [0, 1, 2]              # development map seeds (E12 uses fresh seeds 100-104)
+subsample_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # paired across all maps (E12 uses 100-109)
+lambdas: [1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e+1, 1.0e+2]
+max_iter: 500
+knobs:                            # 4 map-specific values each (protocol 3.4 / 3.6)
+  D: [0.25, 0.5, 1.0, 2.0]                                   # tanh scale s
+  F-scatter: [0.7853981633974483, 1.5707963267948966, 3.141592653589793, 6.283185307179586]  # beta
+  F-fourier: [0.7853981633974483, 1.5707963267948966, 3.141592653589793, 6.283185307179586]  # beta
+  H: [0.5, 1.0, 2.0, 4.0]                                    # sigma / sqrt(d)
+  G: [0.0, 0.1, 0.3, 0.5]                                    # MLP dropout
+untuned:                          # extra rows: F with beta fixed at pi (only lambda tuned)
+  F-scatter: 3.141592653589793
+  F-fourier: 3.141592653589793
+mlp:
+  hidden: 256
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  batch_size: 64
+  patience: 10
+  max_epochs: 200
+bootstrap:
+  B: 10000
+  seed: 0

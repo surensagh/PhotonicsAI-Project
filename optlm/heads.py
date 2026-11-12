@@ -93,6 +93,44 @@ def fit_linear_scorer(X: np.ndarray, y: np.ndarray, lam: float, max_iter: int = 
             "seconds": time.time() - t0}
 
 
+def fit_linear_batched(X: torch.Tensor, y: torch.Tensor, lam: float, max_iter: int = 500, tol: float = 1e-10) -> dict:
+    """S independent problems with the same lambda, solved in one L-BFGS run.
+
+    X: (S, n, C, D) tensor, y: (S, n) long tensor. Minimizes
+        sum_s [ mean_n CE(X_s w_s, y_s) + (lam / 2) ||w_s||^2 ]
+    The problems share no parameters, so the joint minimum is each problem's own minimum.
+    Problems are grouped by lambda (never mixing lambdas), so they are similarly conditioned.
+    Returns {"W": (S, D) tensor, "n_iter", "losses"}.
+    """
+    lam = float(lam)
+    S, n, C, Dd = X.shape
+    W = torch.zeros((S, Dd), device=X.device, requires_grad=True)
+    opt = torch.optim.LBFGS([W], lr=1.0, max_iter=1, max_eval=25, history_size=20,
+                            tolerance_grad=1e-9, tolerance_change=1e-14, line_search_fn="strong_wolfe")
+    yflat = y.reshape(-1)
+
+    def objective():
+        scores = torch.einsum("sncd,sd->snc", X, W)
+        ce = F.cross_entropy(scores.reshape(-1, C), yflat, reduction="none").reshape(S, n).mean(1)
+        return (ce + 0.5 * lam * (W * W).sum(1)).sum()
+
+    def closure():
+        opt.zero_grad()
+        loss = objective()
+        loss.backward()
+        return loss
+
+    with torch.no_grad():
+        losses = [float(objective())]
+    for _ in range(max_iter):
+        opt.step(closure)
+        with torch.no_grad():
+            losses.append(float(objective()))
+        if abs(losses[-2] - losses[-1]) <= tol * max(1.0, abs(losses[-1])):
+            break
+    return {"W": W.detach(), "n_iter": len(losses) - 1, "losses": losses}
+
+
 def linear_scores(X: np.ndarray, w: np.ndarray) -> np.ndarray:
     return np.asarray(X, dtype=np.float32) @ np.asarray(w, dtype=np.float32)
 
@@ -149,7 +187,7 @@ def train_mlp(Xtr, ytr, Xdev, ydev, *, hidden, out_dim, dropout, lr, weight_deca
             opt.zero_grad()
             loss.backward()
             opt.step()
-            total += float(loss) * len(idx)
+            total += loss.item() * len(idx)
         model.eval()
         with torch.no_grad():
             acc = float((model(Xd).argmax(1).cpu().numpy() == ydev).mean())

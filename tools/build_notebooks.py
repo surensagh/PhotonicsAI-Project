@@ -200,6 +200,48 @@ Every run wrote a JSON record with config, commit hash, environment and per-item
 `WORKSPACE/runs/E1/`. Write today's notebook entry from `notebook/TEMPLATE.md`.
 """),
     ]),
+    "05_e2_operators.ipynb": (True, [
+        md("""
+# 05 · E2: optical vs digital feature maps (Table 2, Figure 2, gate G2)
+
+**Runtime:** T4 GPU. **Time:** roughly 45–75 minutes. **Resumable:** finished maps are skipped on re-run.
+Needs notebooks 01–02 (cache) and G1 passed.
+
+**Question.** Does the phase-encoded optical map do something that generic random-feature expansion does not?
+
+**Design** (protocol E2). SciQ, Pythia-160M, `L12`, mean pooling, linear scoring head, tuned on dev.
+9 maps (A, B, C, D, E, F-scatter, F-fourier, G, H) × D ∈ {768, 3072} × {N = 100 with 10 paired subsamples, full data}
+× 3 map seeds, plus F with β fixed at π (untuned) to show how much of F's score comes from tuning.
+
+**Tuning budget** (protocol 3.6): knob maps (D tanh s, F β, H σ) get 4 knob values × 7 λ = 28 configs;
+knob-free maps (A, B, C, E) get 7; G gets 4 dropout values. Selection = highest mean dev accuracy over
+seeds and subsamples; ties go to the stronger regularization.
+
+### Interpretation matrix (written before seeing any results)
+
+| Observed (best tuned F) | Conclusion | Next step |
+|---|---|---|
+| F > A, B and F > H, C (CIs separate) | Optical structure adds something beyond random features | Proceed; E10 must explain why |
+| F > A, B but F ≈ H or C | Benefit is random-feature expansion; optics is a physical implementation of it | Proceed with reframed H2 (Section 7) |
+| F ≈ A | Expansion adds nothing at this layer | Run E3 and E4 before concluding |
+| F < A | Map destroys information (check β range, normalization) | Debug; re-run E0 tests |
+
+**Gate G2 (Nov 23):** F beats A at N = 100 (95% paired-bootstrap CI excludes 0) for some D.
+"""),
+        code(SETUP),
+        code(GPU_CHECK),
+        code("!python -m pytest -q tests/test_featuremaps.py tests/test_stats_batched.py"),
+        code("!python scripts/run_e2.py --config configs/e2.yaml"),
+        md("### Table 2"),
+        code(r'''from IPython.display import Markdown, Image, display
+display(Markdown(open(os.path.join(WORKSPACE, "reports", "e2_table2.md"), encoding="utf-8").read()))'''),
+        md("### Figure 2"),
+        code(r'''display(Image(os.path.join(WORKSPACE, "reports", "e2_fig2.png")))'''),
+        md("""
+The report is regenerated from the run records alone (`python analysis/e2_report.py`); no hand-edited numbers.
+Raw records: `WORKSPACE/runs/E2/` (selected-config predictions in .json, the full prediction grid in .npz).
+"""),
+    ]),
 }
 
 
