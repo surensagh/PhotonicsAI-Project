@@ -1,0 +1,37 @@
+# E2 under protocol amendment v2 (research_question_v2.md, 2026-11-13): F's phase encoding becomes
+# phi = 2 pi (tanh(h / tau) + 1) / 2 with knob tau. Pre-registered E2 design otherwise (same lambda grid,
+# seeds, paired subsamples, selection and statistics). Only the F2 maps are run; all other rows,
+# including v1 F for side-by-side comparison, are reused from the E2 records (identical inputs).
+experiment: E2v2
+note: "Protocol amendment v2: F2 = F with phi = 2 pi (tanh(h/tau)+1)/2, tau in {1, 4, 16, 64}; same optics and seeds as v1 F. Non-F2 rows reused from E2."
+reuse:
+  from: E2
+  maps: [A, B, C, D, E, G, H, F-scatter, F-fourier]
+model_tag: pythia-160m
+layer: L12
+pooling: mean
+maps: [F2-scatter, F2-fourier]
+dims: [768, 3072]
+regimes:
+  - {name: N100, N: 100}
+  - {name: full}
+map_seeds: [0, 1, 2]
+subsample_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+lambdas: [1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e+1, 1.0e+2]
+max_iter: 500
+knobs:
+  F2-scatter: [1.0, 4.0, 16.0, 64.0]
+  F2-fourier: [1.0, 4.0, 16.0, 64.0]
+untuned:
+  F2-scatter: 4.0
+  F2-fourier: 4.0
+mlp:
+  hidden: 256
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  batch_size: 64
+  patience: 10
+  max_epochs: 200
+bootstrap:
+  B: 10000
+  seed: 0

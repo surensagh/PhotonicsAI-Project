@@ -13,6 +13,7 @@ Output r: (n, D) float32 (standardized afterwards by the caller).
 | F  | F-scatter  | r = |U exp(i phi)|^2, U ~ CN(0, 1/d)               | beta in {pi/4,pi/2,pi,2pi} |
 | F  | F-fourier  | SLM grid -> unitary 2-D FFT -> D camera pixels    | beta in {pi/4,pi/2,pi,2pi} |
 | H  | rff        | r = sqrt(2/D) cos(W h + b), W ~ N(0, sigma^-2)    | sigma in {0.5,1,2,4} sqrt(d)|
+| F2 | F2-scatter / F2-fourier: protocol v2 encoding phi = 2 pi (tanh(h/tau)+1)/2 | tau in {1,4,16,64} |
 (G, the trainable MLP, lives in optlm.heads.)
 
 Seeding: every random matrix comes from np.random.default_rng([map_code, map_seed]).
@@ -28,8 +29,12 @@ import torch
 
 from optics.maps import FFourier, FScatter
 
-MAP_CODES = {"B": 1, "C": 1, "D": 1, "E": 4, "F-scatter": 6, "F-fourier": 7, "H": 8}
-KNOB_NAMES = {"D": "s", "F-scatter": "beta", "F-fourier": "beta", "H": "sigma_over_sqrt_d"}
+# F2-* (protocol amendment v2) share F-*'s map codes, so v1 and v2 use identical optics per seed.
+MAP_CODES = {"B": 1, "C": 1, "D": 1, "E": 4, "F-scatter": 6, "F-fourier": 7, "H": 8,
+             "F2-scatter": 6, "F2-fourier": 7}
+KNOB_NAMES = {"D": "s", "F-scatter": "beta", "F-fourier": "beta", "H": "sigma_over_sqrt_d",
+              "F2-scatter": "tau", "F2-fourier": "tau"}
+F2_BETA = 2 * math.pi  # v2: full SLM phase range
 
 
 def _gauss(rng, shape, std):
@@ -51,11 +56,11 @@ class FeatureMap:
         elif name == "E":
             self.R1 = _gauss(rng, (D, d), 1 / math.sqrt(2 * d)).to(device)
             self.R2 = _gauss(rng, (D, d), 1 / math.sqrt(2 * d)).to(device)
-        elif name == "F-scatter":
+        elif name in ("F-scatter", "F2-scatter"):
             m = FScatter(d, D, seed=[MAP_CODES[name], seed], complex_dtype=np.complex128)
             self.Ur = torch.from_numpy(m.U.real.astype(np.float32)).to(device)
             self.Ui = torch.from_numpy(m.U.imag.astype(np.float32)).to(device)
-        elif name == "F-fourier":
+        elif name in ("F-fourier", "F2-fourier"):
             m = FFourier(d, D, seed=[MAP_CODES[name], seed])
             self.G, self.M, self.offset = m.G, m.M, m.offset
             self.pad_amplitude, self.pad_phase = m.pad_amplitude, m.pad_phase
@@ -67,8 +72,11 @@ class FeatureMap:
             raise ValueError(f"unknown map {name!r}")
 
     # ------------------------------------------------------------------ per-chunk transforms
-    def _phase(self, h, beta):
-        return beta * (torch.tanh(h) + 1.0) / 2.0
+    def _phase(self, h, knob):
+        """v1 (F-*): knob = beta, phi = beta (tanh h + 1)/2.  v2 (F2-*): knob = tau, phi = 2 pi (tanh(h/tau) + 1)/2."""
+        if self.name.startswith("F2-"):
+            return F2_BETA * (torch.tanh(h / float(knob)) + 1.0) / 2.0
+        return float(knob) * (torch.tanh(h) + 1.0) / 2.0
 
     def _apply(self, h: torch.Tensor, knob) -> torch.Tensor:
         n = self.name
@@ -82,14 +90,14 @@ class FeatureMap:
             return torch.tanh(float(knob) * (h @ self.R.T))
         if n == "E":
             return (h @ self.R1.T) ** 2 + (h @ self.R2.T) ** 2
-        if n == "F-scatter":
-            phi = self._phase(h, float(knob))
+        if n in ("F-scatter", "F2-scatter"):
+            phi = self._phase(h, knob)
             c, s = torch.cos(phi), torch.sin(phi)
             ur = c @ self.Ur.T - s @ self.Ui.T
             ui = c @ self.Ui.T + s @ self.Ur.T
             return ur * ur + ui * ui
-        if n == "F-fourier":
-            phi = self._phase(h, float(knob))
+        if n in ("F-fourier", "F2-fourier"):
+            phi = self._phase(h, knob)
             k = h.shape[0]
             g2 = self.G * self.G
             field = torch.empty((k, g2), dtype=torch.complex64, device=h.device)

@@ -61,3 +61,25 @@ def test_shapes_and_chunking(name, knob):
     r = m(H, knob)
     assert r.shape == (40, D) and torch.isfinite(r).all()
     torch.testing.assert_close(r, big_chunk(H, knob))
+
+
+# ----------------------------------------------------------------- protocol v2 encoding (F2)
+@pytest.mark.parametrize("v1,v2", [("F-scatter", "F2-scatter"), ("F-fourier", "F2-fourier")])
+def test_f2_tau1_equals_v1_at_2pi(v1, v2):
+    """tau = 1 reproduces the v1 encoding at beta = 2 pi, with identical optics per seed."""
+    torch.testing.assert_close(FeatureMap(v2, d, D, 5)(H, 1.0), FeatureMap(v1, d, D, 5)(H, 2 * math.pi))
+
+
+def test_f2_matches_numpy_with_tau():
+    t = FeatureMap("F2-scatter", d, D, seed=2)
+    n = FScatter(d, D, seed=[6, 2], complex_dtype=np.complex128)
+    np.testing.assert_allclose(t(H, 16.0).numpy(), n(H.numpy().astype(np.float64), 2 * math.pi, 16.0),
+                               rtol=1e-4, atol=1e-4)
+
+
+def test_f2_large_tau_is_nearly_linear_in_h():
+    """For large tau, phi ~ pi + pi h / tau: no squashing of large |h| (unlike tanh(h))."""
+    from optics.maps import phase_encode
+    h = np.array([0.5, 2.0, 4.0])
+    phi = phase_encode(h, 2 * math.pi, 64.0) - math.pi
+    np.testing.assert_allclose(phi / (math.pi * h / 64.0), 1.0, rtol=2e-3)

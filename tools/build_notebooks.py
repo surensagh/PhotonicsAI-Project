@@ -270,6 +270,31 @@ Isolates the tanh squashing and the global-phase (common-mode) loss; see `script
 """),
         code("!python scripts/diag_linear_limit.py --config configs/e2_diag.yaml"),
     ]),
+    "07_e2_v2_encoding.ipynb": (True, [
+        md("""
+# 07 · E2 under protocol amendment v2: scaled phase encoding
+
+**Runtime:** T4 GPU. **Time:** about 10 minutes. **Resumable.**
+Amendment: `research_question_v2.md` (committed 2026-11-13, before this run); log: `deviations.md`.
+
+**Change.** F's encoding becomes φ = 2π·(tanh(h/τ) + 1)/2 with knob τ ∈ {1, 4, 16, 64}
+(v1 was φ = β·(tanh(h) + 1)/2 with knob β). Same optics, seeds, λ grid, paired subsamples, selection and
+statistics as E2. Only the F2 maps run; every other row (and v1 F, for comparison) is reused from E2.
+
+**Why.** The E2 diagnostic showed the optics simulation matches theory exactly and that F's loss came
+from tanh squashing the standardized features (h 51.7% → tanh(h) 46.1%).
+
+**Prediction written before running.** At full data F2's accuracy rises with τ and approaches A (51.7%)
+at τ = 64. Whether F2 beats A or the best digital map at N = 100 is what this run tests (gate G2 under v2).
+"""),
+        code(SETUP),
+        code(GPU_CHECK),
+        code("!python -m pytest -q tests/test_featuremaps.py"),
+        code("!python scripts/run_e2.py --config configs/e2_v2.yaml"),
+        code(r'''print(open(os.path.join(WORKSPACE, "reports", "e2v2_table2.md"), encoding="utf-8").read())'''),
+        code(r'''from IPython.display import Image, display
+display(Image(os.path.join(WORKSPACE, "reports", "e2v2_fig2.png")))'''),
+    ]),
 }
 
 

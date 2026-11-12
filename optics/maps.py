@@ -23,9 +23,9 @@ import math
 import numpy as np
 
 
-def phase_encode(h: np.ndarray, beta: float) -> np.ndarray:
-    """phi = beta * (tanh(h) + 1) / 2."""
-    return beta * (np.tanh(h) + 1.0) / 2.0
+def phase_encode(h: np.ndarray, beta: float, tau: float = 1.0) -> np.ndarray:
+    """phi = beta * (tanh(h / tau) + 1) / 2.  tau = 1 is the v1 encoding; v2 uses beta = 2 pi, tau knob."""
+    return beta * (np.tanh(h / tau) + 1.0) / 2.0
 
 
 def analytic_kernel_scatter(phi1: np.ndarray, phi2: np.ndarray) -> np.ndarray:
@@ -62,8 +62,8 @@ class FScatter:
             out[s : s + self.chunk] = (u.real ** 2 + u.imag ** 2)
         return out.reshape(*lead, self.D)
 
-    def __call__(self, h: np.ndarray, beta: float) -> np.ndarray:
-        return self.intensity_from_phase(phase_encode(h, beta))
+    def __call__(self, h: np.ndarray, beta: float, tau: float = 1.0) -> np.ndarray:
+        return self.intensity_from_phase(phase_encode(h, beta, tau))
 
 
 class FFourier:
@@ -125,5 +125,5 @@ class FFourier:
             out[s : s + self.chunk] = far.real ** 2 + far.imag ** 2
         return out.reshape(*lead, self.D)
 
-    def __call__(self, h: np.ndarray, beta: float) -> np.ndarray:
-        return self.intensity_from_phase(phase_encode(h, beta))
+    def __call__(self, h: np.ndarray, beta: float, tau: float = 1.0) -> np.ndarray:
+        return self.intensity_from_phase(phase_encode(h, beta, tau))

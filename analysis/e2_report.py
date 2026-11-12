@@ -27,10 +27,19 @@ LABELS = {
     "E": "E complex intensity", "H": "H random Fourier features", "G": "G MLP (trainable)",
     "F-scatter": "F-scatter", "F-fourier": "F-fourier",
     "F-scatter-untuned": "F-scatter (β = π, untuned)", "F-fourier-untuned": "F-fourier (β = π, untuned)",
+    "F2-scatter": "F2-scatter (v2 encoding)", "F2-fourier": "F2-fourier (v2 encoding)",
+    "F2-scatter-untuned": "F2-scatter (τ = 4, untuned)", "F2-fourier-untuned": "F2-fourier (τ = 4, untuned)",
 }
-ROW_ORDER = ["A", "B", "C", "D", "E", "H", "G", "F-scatter", "F-fourier", "F-scatter-untuned", "F-fourier-untuned"]
-F_TUNED = ["F-scatter", "F-fourier"]
-OPTICAL = {"F-scatter", "F-fourier", "F-scatter-untuned", "F-fourier-untuned"}
+ROW_ORDER = ["A", "B", "C", "D", "E", "H", "G", "F-scatter", "F-fourier", "F-scatter-untuned", "F-fourier-untuned",
+             "F2-scatter", "F2-fourier", "F2-scatter-untuned", "F2-fourier-untuned"]
+OPTICAL = {"F-scatter", "F-fourier", "F-scatter-untuned", "F-fourier-untuned",
+           "F2-scatter", "F2-fourier", "F2-scatter-untuned", "F2-fourier-untuned"}
+
+
+def f_tuned(present) -> list:
+    """The tuned optical rows that define the gate: v2 (F2-*) when present, else v1 (F-*)."""
+    v2 = [m for m in ("F2-scatter", "F2-fourier") if m in present]
+    return v2 or [m for m in ("F-scatter", "F-fourier") if m in present]
 INTERPRETATION = {
     1: ("F > A, B and F > H, C (CIs separate)", "Optical structure adds something beyond random features",
         "Proceed; E10 must explain why"),
@@ -43,8 +52,15 @@ INTERPRETATION = {
 }
 
 
-def load_records(exp="E2"):
+def load_records(exp="E2", reuse=None):
+    """Records of `exp`; optionally first load selected maps from another experiment (reuse = {from, maps})."""
     recs = {}
+    if reuse:
+        for p in sorted(runs_dir(reuse["from"]).glob("*.json")):
+            r = read_json(p)
+            m = r["metrics"]
+            if m["map"] in reuse["maps"]:
+                recs[(m["map"], m["D"], m["regime"])] = r
     for p in sorted(runs_dir(exp).glob("*.json")):
         r = read_json(p)
         m = r["metrics"]
@@ -124,7 +140,7 @@ def make_figure(panels, path, exp="E2"):
 def build_report(cfg: dict) -> dict:
     exp = cfg.get("experiment", "E2")
     tag = exp.lower()
-    recs = load_records(exp)
+    recs = load_records(exp, cfg.get("reuse"))
     d = min(cfg["dims"])
     B, bseed = cfg["bootstrap"]["B"], cfg["bootstrap"]["seed"]
     panels, out = {}, {"panels": {}, "B": B, "experiment": exp, "exploratory": bool(cfg.get("exploratory")),
@@ -159,7 +175,7 @@ def build_report(cfg: dict) -> dict:
             adj = holm([comps[f][ref]["p"] for f, ref in flat]) if flat else []
             for (f, ref), a in zip(flat, adj):
                 comps[f][ref]["p_holm"] = a
-            tuned = [f for f in F_TUNED if f in stats]
+            tuned = f_tuned(stats)
             best_f = max(tuned, key=lambda f: stats[f]["mean"]) if tuned else None
             row = interpret(comps[best_f]) if best_f and "A" in comps[best_f] else None
             key = f"D{D}_{reg['name']}"
@@ -172,7 +188,7 @@ def build_report(cfg: dict) -> dict:
     g2_hits = []
     for key, P in out["panels"].items():
         if key.endswith("N100"):
-            for f in F_TUNED:
+            for f in f_tuned(P["rows"]):
                 c = P["comparisons"].get(f, {}).get("A")
                 if c and c["ci_excludes_0"] and c["diff"] > 0:
                     g2_hits.append(f"{f} at {P['title']}")
@@ -196,7 +212,7 @@ def fmt_knob(name, v):
                         (0.5, "π/2"), (1.0, "π"), (2.0, "2π")):
             if abs(v - frac * np.pi) < 1e-9:
                 return f"β={s}"
-    label = {"s": "s", "sigma_over_sqrt_d": "σ/√d", "dropout": "dropout"}.get(name, name)
+    label = {"s": "s", "sigma_over_sqrt_d": "σ/√d", "dropout": "dropout", "tau": "τ"}.get(name, name)
     return f"{label}={v:g}"
 
 
@@ -217,6 +233,8 @@ def write_markdown(out, path, tag="e2"):
         L += ["> **EXPLORATORY diagnostic (logged deviation, see deviations.md).** Not part of the pre-registered",
               "> analysis; the gate line below is informational only and does not replace gate G2.", "",
               out["note"], ""]
+    elif out["note"]:
+        L += [f"*{out['note']}*", ""]
     L += [
          "SciQ dev (1,000 questions), Pythia-160M-deduped, L12, mean pooling, linear scoring head.",
          "Mean dev accuracy over map seeds (and the 10 paired subsamples at N = 100) with 95% paired-bootstrap CIs.",
